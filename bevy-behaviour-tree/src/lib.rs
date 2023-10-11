@@ -1,32 +1,51 @@
+//! bevy-behaviour-tree is a crate for defining simple, composable, and extensible behaviour trees for [bevy].
+#![warn(missing_docs)]
 #![feature(return_position_impl_trait_in_trait)]
 
-use bevy::{prelude::{System, Entity, World, In, IntoSystemConfigs, IntoSystemSetConfigs, IntoSystem, GlobalTransform}, ecs::{schedule::{SystemConfig, SystemConfigs}, system::{BoxedSystem, FunctionSystem, ExclusiveFunctionSystem}}};
-
-#[derive(PartialEq, Eq, Clone, Copy, Debug)]
-pub enum Status {
-    Success,
-    Failure,
-    Running,
-}
+use bevy::{
+    prelude::{Entity, IntoSystem, System, World},
+    utils::all_tuples,
+};
 
 /// The trait at the core of this crate.
-/// 
+///
 /// The idea is simple: a `Behaviour` takes in an [`Entity`] and the [`World`] it belongs to, along with its own arbitrary state, and returns a [`Status`], indicating whether it's running, has failed or succeeded.
-/// 
-/// The most important implementation for `Behaviour` is a blanket implementation for any [`System<In = Entity, Out = Status>`][bevy::ecs::system::System], 
+///
+/// The most important implementation for `Behaviour` is a blanket implementation for any [`System<In = Entity, Out = Status>`][bevy::ecs::system::System],
 /// meaning that any user-defined system that takes in an `Entity` and returns a `Status` is automatically a `Behaviour`.
-/// See [`In`] if you've never used system input before.
-/// 
+/// If you've never seen or used system inputs before, have a look at [`In`] and the [piping example](https://github.com/bevyengine/bevy/blob/main/examples/ecs/system_piping.rs).
+///
 /// There are three basic types of behaviours:
-///  - *Actions*: they modify world state directly. These are usually user defined, like a system to make an entity walk from A to B.
+///  - *Leafs*: they access and/or modify world state directly. These are usually user defined, like a system to make an entity walk from A to B, or to check if there are enemies nearby.
 ///  - *Decorators*: they modify the output of another behaviour, like [`invert`][DecoratorInput::invert] and [`retry_while`][DecoratorInput::retry_while].
 ///  - *Compositors*: they modify the output of a group of other behaviours, like [`select`] and [`chain`]
-/// 
-/// These types aren't strictly enforced, but are the defacto standard implementation for behaviour tree nodes. You can freely extend and mix them as you see fit, by using bevy's [`pipe systems`][bevy::ecs::system::Pipe] for example.
+///
+/// These types aren't strictly enforced, but are the defacto standard implementation for behaviour tree nodes. You can freely extend and mix them as you see fit, by using the aforementioned system piping for example.
 /// As long as the resulting system takes in an `Entity` and outputs a `Status`, it's a valid `Behaviour` usable with this crate.
-pub trait Behaviour: Send + Sync + 'static + Clone {
+///
+/// For more complex custom implementations, you need to make sure that all underlying systems [initialize][bevy::ecs::system::System::initialize] correcly.
+/// If you see a `Encountered a mismathed World.` panic, it's likely one of the systems you rely on wasn't initialized properly.
+pub trait Behaviour: Send + Sync + 'static {
+    /// Runs the behaviour on the given entity, in the given world. Called once a world tick at most.
+    ///
+    /// # Panics
+    /// If the world passed is not the same one that was passed in [`initialize`][Behaviour::initialize].
     fn run(&mut self, entity: Entity, world: &mut World) -> Status;
+
+    /// Initializes the behaviour. This registers component access for underlying systems, and does general setup work.
+    /// Required to be called before [`run`][Behaviour::run].
     fn initialize(&mut self, world: &mut World);
+}
+
+/// The status of a [`Behaviour`], returned when it's [`run`][Behaviour::run].
+#[derive(PartialEq, Eq, Clone, Copy, Debug)]
+pub enum Status {
+    /// Indicates a successful action.
+    Success,
+    /// Indicates a failed action.
+    Failure,
+    /// Indicates that an action requires more time to complete.
+    Running,
 }
 
 impl<F: System<In = Entity, Out = Status> + Clone> Behaviour for F {
@@ -38,7 +57,6 @@ impl<F: System<In = Entity, Out = Status> + Clone> Behaviour for F {
         System::initialize(self, world)
     }
 }
-
 
 /// For debug purposes only. Panics if used in any way.
 #[derive(Clone, Copy)]
@@ -55,34 +73,46 @@ impl Behaviour for TodoBehaviour {
     }
 }
 
+/// Types that can be used with the built-in decorator functions.
+/// - [`Behaviour`]
+/// - Nothing else lol
 trait DecoratorInput {
-    /// Inverts the output of this behaviour group.
-    /// When the group succeeds, this fails. When the group fails, this succeeds.
+    /// Inverts the output.
+    ///
+    /// **Succeeds** when the underlying behaviour fails.
+    /// **Fails** when the underlying behaviour succeeds.
     fn invert(self) -> impl Behaviour;
 
     /// Retry the action a fixed number of times.
+    ///
+    /// **Succeeds** when the underlying behaviour succeeds.
+    /// **Fails** when the maximum amount of retries has been reached.
     fn retry(self, tries: usize) -> impl Behaviour;
 
-    /// Retries while the condition is true, fails when it becomes false.
-    /// ```
-    /// # use bevy::prelude::*;
-    /// # use bevy_behaviour_tree::*;
-    /// fn system() {
-    /// 
-    /// }
-    /// ```
+    /// Retries while the condition is true.
+    ///
+    /// **Succeeds** when the underlying behaviour succeeds.
+    /// **Fails** when the condition becomes false.
     fn retry_while<Marker, C>(self, condition: C) -> impl Behaviour
-        where 
-            C: IntoSystem<(), bool, Marker> + Clone,
-            <C as IntoSystem<(), bool, Marker>>::System: Clone;
+    where
+        C: IntoSystem<Entity, bool, Marker> + Clone,
+        <C as IntoSystem<Entity, bool, Marker>>::System: Clone;
 
-    fn repeat(self, times: usize) -> impl Behaviour;
+    /// Repeat a fixed number of times, regardless of whether or not the underlying behaviour fails or not.
+    ///
+    /// **Succeeds** after running `repeats` times.
+    fn repeat(self, repeats: usize) -> impl Behaviour;
+
+    /// Repeat while the condition is true, regardless of whether or not the underlying behaviour fails or not.
+    ///
+    /// **Succeeds** after the condition becomes true.
     fn repeat_while<C>(self, condition: C) -> impl Behaviour
-        where
-            C: IntoSystem<(), bool, ()> + Clone,
-            <C as IntoSystem<(), bool, ()>>::System: Clone;
+    where
+        C: IntoSystem<Entity, bool, ()> + Clone,
+        <C as IntoSystem<Entity, bool, ()>>::System: Clone;
 }
 
+/// See [`DecoratorInput::invert`].
 #[derive(Clone)]
 struct Invert<T: Behaviour>(T);
 
@@ -100,29 +130,32 @@ impl<T: Behaviour> Behaviour for Invert<T> {
     }
 }
 
+/// See [`DecoratorInput::retry_while`].
 #[derive(Clone)]
-struct RetryWhile<F: Behaviour, C: System<In = (), Out = bool> + Clone> {
+struct RetryWhile<F: Behaviour, C: System<In = Entity, Out = bool> + Clone> {
     func: F,
     condition: C,
 }
 
-impl<F: Behaviour, C: System<In = (), Out = bool> + Clone> Behaviour for RetryWhile<F, C> {
+impl<F: Behaviour, C: System<In = Entity, Out = bool> + Clone> Behaviour for RetryWhile<F, C> {
     fn initialize(&mut self, world: &mut World) {
         self.condition.initialize(world);
         self.func.initialize(world);
     }
 
     fn run(&mut self, entity: Entity, world: &mut World) -> Status {
-        if self.condition.run((), world) {
+        if self.condition.run(entity, world) {
             match self.func.run(entity, world) {
                 Status::Failure | Status::Running => Status::Running,
-                Status::Success => Status::Success
+                Status::Success => Status::Success,
             }
         } else {
             Status::Failure
         }
     }
 }
+
+/// See [`DecoratorInput::retry`].
 #[derive(Clone)]
 struct Retry<T: Behaviour> {
     max_tries: usize,
@@ -146,14 +179,12 @@ impl<T: Behaviour> Behaviour for Retry<T> {
                     self.tries = 0; // reset state to get ready for the next call
                     Status::Failure
                 }
-            },
+            }
             Status::Success => {
                 self.tries = 0; // reset state
                 Status::Success
-            },
-            Status::Running => {
-                Status::Running
             }
+            Status::Running => Status::Running,
         }
     }
 }
@@ -172,57 +203,165 @@ impl<T: Behaviour> DecoratorInput for T {
     }
 
     fn retry_while<Marker, C>(self, condition: C) -> impl Behaviour
-        where 
-            C: IntoSystem<(), bool, Marker> + Clone,
-            <C as IntoSystem<(), bool, Marker>>::System: Clone {
+    where
+        C: IntoSystem<Entity, bool, Marker> + Clone,
+        <C as IntoSystem<Entity, bool, Marker>>::System: Clone,
+    {
         RetryWhile {
             func: self,
             condition: IntoSystem::into_system(condition),
         }
     }
 
-    fn repeat(self, times: usize) -> impl Behaviour {
+    fn repeat(self, _times: usize) -> impl Behaviour {
         TodoBehaviour
     }
 
-    fn repeat_while<C>(self, condition: C) -> impl Behaviour
-        where
-            C: IntoSystem<(), bool, ()> + Clone,
-            <C as IntoSystem<(), bool, ()>>::System: Clone {
+    fn repeat_while<C>(self, _condition: C) -> impl Behaviour
+    where
+        C: IntoSystem<Entity, bool, ()> + Clone,
+        <C as IntoSystem<Entity, bool, ()>>::System: Clone,
+    {
         TodoBehaviour
     }
 }
 
-pub struct CompositeInput {
-    systems: Vec<Box<dyn System<In = Entity, Out = Status>>>,
+/// Helper trait for [`Behaviour`] tuples.
+trait BehaviourGroup {
+    fn group(self) -> Vec<Box<dyn Behaviour>>;
 }
 
-impl CompositeInput {
-    /// Run the underlying system. Returns `None` if no system with the specified index exists.
-    pub(crate) fn run(&mut self, index: usize, entity: Entity, world: &mut World) -> Option<Status> {
-        let system = self.systems.get_mut(index)?;
-        Some(system.run(entity, world))
+macro_rules! impl_behaviour_group {
+    ($($name: ident), *) => {
+        impl<$($name: Behaviour),*> BehaviourGroup for ($($name,)*) {
+            fn group(self) -> Vec<Box<dyn Behaviour>> {
+                #[allow(non_snake_case)]
+                let ($($name,)*) = self;
+
+                vec![$(Box::new($name)),*]
+            }
+        }
+    }
+}
+
+all_tuples!(impl_behaviour_group, 2, 15, B);
+
+/// *Composite* nodes take a group of input nodes, run them and transform their ouput.
+pub trait CompositeInput {
+    /// Chains the input nodes together. This breaks with a failure as soon as one of the input nodes fails.
+    fn chain(self) -> impl Behaviour;
+    /// Selects between the input branches. Breaks with a success as soon as one input succeeds, or fails if none of them do.
+    fn select(self) -> impl Behaviour;
+}
+
+impl<T: BehaviourGroup> CompositeInput for T {
+    fn chain(self) -> impl Behaviour {
+        Chain {
+            funcs: BehaviourGroup::group(self),
+            index: 0,
+        }
+    }
+
+    fn select(self) -> impl Behaviour {
+        Select {
+            funcs: BehaviourGroup::group(self),
+            index: 0,
+        }
+    }
+}
+
+/// See [`CompositeInput::chain`].
+struct Chain {
+    funcs: Vec<Box<dyn Behaviour>>,
+    index: usize,
+}
+
+impl Behaviour for Chain {
+    fn initialize(&mut self, world: &mut World) {
+        for func in &mut self.funcs {
+            func.initialize(world);
+        }
+    }
+
+    fn run(&mut self, entity: Entity, world: &mut World) -> Status {
+        if let Some(system) = self.funcs.get_mut(self.index) {
+            match system.run(entity, world) {
+                Status::Running => Status::Running,
+                Status::Failure => {
+                    // reset state
+                    self.index = 0;
+                    Status::Failure
+                }
+                Status::Success => {
+                    self.index += 1;
+                    Status::Running
+                }
+            }
+        } else {
+            Status::Success
+        }
+    }
+}
+
+/// See [`CompositeInput::select`].
+struct Select {
+    funcs: Vec<Box<dyn Behaviour>>,
+    index: usize,
+}
+
+impl Behaviour for Select {
+    fn initialize(&mut self, world: &mut World) {
+        for func in &mut self.funcs {
+            func.initialize(world);
+        }
+    }
+
+    fn run(&mut self, entity: Entity, world: &mut World) -> Status {
+        if let Some(system) = self.funcs.get_mut(self.index) {
+            match system.run(entity, world) {
+                Status::Running => Status::Running,
+                Status::Failure => {
+                    // advance to the next branch
+                    self.index += 1;
+                    Status::Running
+                }
+                Status::Success => {
+                    // reset state
+                    self.index = 0;
+                    Status::Success
+                }
+            }
+        } else {
+            self.index = 0;
+            // we tried everything; no branch was successful
+            Status::Failure
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::sync::{atomic::{AtomicI32, Ordering}, Arc};
+    use bevy::prelude::{Component, Entity, In, IntoSystem, Query, World};
 
-    use bevy::prelude::{In, Entity, World, IntoSystem};
-
-    use crate::{Status, DecoratorInput, Behaviour};
+    use crate::{Behaviour, CompositeInput, DecoratorInput, Status};
 
     fn succeed(In(_): In<Entity>) -> Status {
         Status::Success
+    }
+
+    fn fail(In(_): In<Entity>) -> Status {
+        Status::Failure
+    }
+
+    fn panic_if_run(_: In<Entity>) -> Status {
+        panic!(":(");
     }
 
     #[test]
     fn test_invert() {
         let mut world = World::default();
 
-        let mut system = IntoSystem::into_system(succeed)
-            .invert();
+        let mut system = IntoSystem::into_system(succeed).invert();
 
         let entity = world.spawn_empty().id();
 
@@ -236,30 +375,143 @@ mod tests {
     #[test]
     fn test_retry() {
         let mut world = World::default();
-        let counter = Arc::new(AtomicI32::new(0));
 
-        let i = Arc::clone(&counter);
+        #[derive(Component)]
+        struct Counter(u32);
 
-        let system = IntoSystem::into_system(move |_: In<Entity>| {            
-            i.fetch_add(1, Ordering::Relaxed);
+        let system = IntoSystem::into_system(
+            move |In(entity): In<Entity>, mut counters: Query<&mut Counter>| {
+                let mut counter = counters.get_mut(entity).unwrap();
+                counter.0 += 1;
 
-            if i.load(Ordering::Relaxed) < 3 {
-                Status::Failure
-            } else {
-                Status::Success
-            }
-        });
+                if counter.0 < 3 {
+                    Status::Failure
+                } else {
+                    Status::Success
+                }
+            },
+        );
 
         let mut retry = system.retry(5);
 
         retry.initialize(&mut world);
 
-        let entity = world.spawn_empty().id();
+        let entity = world.spawn(Counter(0)).id();
 
-        while let Status::Running = retry.run(entity, &mut world) {
-            
+        while let Status::Running = retry.run(entity, &mut world) {}
+
+        let counter = world.get::<Counter>(entity).unwrap();
+
+        assert_eq!(counter.0, 3);
+    }
+
+    #[test]
+    fn test_retry_while() {
+        let mut world = World::default();
+
+        #[derive(Component)]
+        struct Counter(u32);
+
+        let mut retry_system = IntoSystem::into_system(
+            move |In(entity): In<Entity>, mut counters: Query<&mut Counter>| {
+                let mut counter = counters.get_mut(entity).unwrap();
+
+                counter.0 += 1;
+
+                if counter.0 < 10 {
+                    Status::Failure
+                } else {
+                    Status::Success
+                }
+            },
+        )
+        .retry_while(|In(entity): In<Entity>, counters: Query<&Counter>| {
+            let counter = counters.get(entity).unwrap();
+            counter.0 < 5
+        });
+
+        retry_system.initialize(&mut world);
+
+        let entity = world.spawn(Counter(0)).id();
+
+        let mut last_status: Status = Status::Running;
+
+        for _ in 0..=10 {
+            last_status = retry_system.run(entity, &mut world);
+
+            if matches!(last_status, Status::Failure) {
+                break;
+            }
         }
 
-        assert_eq!(counter.load(Ordering::Relaxed), 3);
+        let counter = world.get::<Counter>(entity).unwrap();
+
+        assert_eq!(last_status, Status::Failure);
+        assert_eq!(counter.0, 5);
+    }
+
+    #[test]
+    fn test_chain() {
+        let mut world = World::default();
+
+        let mut chained = CompositeInput::chain((
+            IntoSystem::into_system(fail),
+            IntoSystem::into_system(panic_if_run),
+        ));
+
+        chained.initialize(&mut world);
+
+        let entity = world.spawn_empty().id();
+
+        assert_eq!(chained.run(entity, &mut world), Status::Failure);
+    }
+
+    #[test]
+    fn test_select() {
+        let mut world = World::default();
+
+        #[derive(Component)]
+        struct HasRun(bool);
+
+        let mut selected = CompositeInput::select((
+            IntoSystem::into_system(fail),
+            IntoSystem::into_system(fail),
+            IntoSystem::into_system(|In(entity): In<Entity>, mut has_run: Query<&mut HasRun>| {
+                has_run.get_mut(entity).unwrap().0 = true;
+                Status::Success
+            }),
+            IntoSystem::into_system(panic_if_run),
+        ));
+
+        selected.initialize(&mut world);
+
+        let entity = world.spawn(HasRun(false)).id();
+
+        let mut last_status: Status = Status::Running;
+
+        for _ in 0..=1 {
+            last_status = selected.run(entity, &mut world);
+            if let Status::Success = last_status {
+                break;
+            }
+        }
+
+        assert_eq!(
+            last_status,
+            Status::Running,
+            "select did not indicate running"
+        );
+
+        for _ in 0..=1 {
+            last_status = selected.run(entity, &mut world);
+            if let Status::Success = last_status {
+                break;
+            }
+        }
+
+        assert_eq!(last_status, Status::Success, "select did not short circuit");
+
+        let has_run = world.query::<&HasRun>().get(&world, entity).unwrap();
+        assert!(has_run.0, "select system did not run");
     }
 }
