@@ -1,0 +1,6 @@
+[workspace]
+resolver = "2"
+members = [
+    "bevy-behaviour-tree",
+    "bevy-behaviour-tree-macros"
+]
