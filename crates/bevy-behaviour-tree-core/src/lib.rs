@@ -18,7 +18,7 @@ pub mod prelude {
     pub use super::behaviour::{Behaviour, Status};
     pub use super::compositor::Compositor;
     pub use super::decorator::Decorator;
-    pub use super::plugin::{BehaviourId, Skip, BehaviourTreePlugin, BehaviourTrees};
+    pub use super::plugin::{BehaviourId, BehaviourTreePlugin, BehaviourTrees, Skip};
 }
 
 /// For debug purposes only. Panics if used in any way.

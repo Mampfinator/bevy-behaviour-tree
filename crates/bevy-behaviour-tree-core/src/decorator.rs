@@ -17,7 +17,7 @@ pub trait Decorator<Marker> {
     fn invert(self) -> impl Behaviour + IntoBehaviour<SelfMarker>;
 
     /// Only runs the underlying behaviour if the condition returns true.
-    /// 
+    ///
     /// **Succeeds** if the condition is false and short circuits.
     /// **Succeeds or fails** depending on the underlying behaviour if the condition is true.
     fn run_if<C>(self, condition: C) -> impl Behaviour + IntoBehaviour<SelfMarker>
@@ -26,9 +26,13 @@ pub trait Decorator<Marker> {
         <C as IntoSystem<Entity, bool, ()>>::System: Clone;
 
     /// Like [`run_if`][Decorator::run_if], but with a customisable return when short circuiting.
-    /// 
+    ///
     /// Note that `system.run_if(|| true).invert()` is equivalent to `system.run_if_with_return(|| true, Status::Failure)`.
-    fn run_if_with_return<C>(self, condition: C, short_circuit: Status) -> impl Behaviour + IntoBehaviour<SelfMarker>
+    fn run_if_with_return<C>(
+        self,
+        condition: C,
+        short_circuit: Status,
+    ) -> impl Behaviour + IntoBehaviour<SelfMarker>
     where
         C: IntoSystem<Entity, bool, ()> + Clone,
         <C as IntoSystem<Entity, bool, ()>>::System: Clone;
@@ -62,27 +66,32 @@ pub trait Decorator<Marker> {
         <C as IntoSystem<Entity, bool, ()>>::System: Clone;
 }
 
-
 impl<Marker: 'static, T: IntoBehaviour<Marker>> Decorator<Marker> for T {
     fn invert(self) -> impl Behaviour + IntoBehaviour<SelfMarker> {
         Invert(IntoBehaviour::into_behaviour(self))
     }
 
     fn run_if<C>(self, condition: C) -> impl Behaviour + IntoBehaviour<SelfMarker>
-        where
-            C: IntoSystem<Entity, bool, ()> + Clone,
-            <C as IntoSystem<Entity, bool, ()>>::System: Clone {
+    where
+        C: IntoSystem<Entity, bool, ()> + Clone,
+        <C as IntoSystem<Entity, bool, ()>>::System: Clone,
+    {
         self.run_if_with_return(condition, Status::Success)
     }
 
-    fn run_if_with_return<C>(self, condition: C, short_circuit: Status) -> impl Behaviour + IntoBehaviour<SelfMarker>
-        where
-            C: IntoSystem<Entity, bool, ()> + Clone,
-            <C as IntoSystem<Entity, bool, ()>>::System: Clone {
+    fn run_if_with_return<C>(
+        self,
+        condition: C,
+        short_circuit: Status,
+    ) -> impl Behaviour + IntoBehaviour<SelfMarker>
+    where
+        C: IntoSystem<Entity, bool, ()> + Clone,
+        <C as IntoSystem<Entity, bool, ()>>::System: Clone,
+    {
         RunIf {
             func: IntoBehaviour::into_behaviour(self),
             condition: IntoSystem::into_system(condition),
-            short_circuit
+            short_circuit,
         }
     }
 
@@ -148,7 +157,9 @@ struct RunIf<F: Behaviour, C: System<In = Entity, Out = bool> + Clone> {
     short_circuit: Status,
 }
 
-impl<F: Behaviour, C: System<In = Entity, Out = bool> + Clone> IntoBehaviour<SelfMarker> for RunIf<F, C> {
+impl<F: Behaviour, C: System<In = Entity, Out = bool> + Clone> IntoBehaviour<SelfMarker>
+    for RunIf<F, C>
+{
     fn into_behaviour(self) -> impl Behaviour {
         self
     }

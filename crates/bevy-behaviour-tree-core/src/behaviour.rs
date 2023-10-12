@@ -1,4 +1,4 @@
-use bevy::prelude::{Entity, IntoSystem, System, World, In};
+use bevy::prelude::{Entity, In, IntoSystem, System, World};
 
 /// The trait at the core of this crate.
 ///

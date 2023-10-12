@@ -1,11 +1,12 @@
-use bevy::{prelude::*, app::AppExit};
+use bevy::{app::AppExit, prelude::*};
 use bevy_behaviour_tree::prelude::*;
 
 #[test]
 fn main() {
     let mut ticks = 0;
 
-    App::new().add_plugins((MinimalPlugins, BehaviourTreePlugin::default()))
+    App::new()
+        .add_plugins((MinimalPlugins, BehaviourTreePlugin::default()))
         .add_systems(Startup, system)
         .add_systems(Update, move |mut quit: EventWriter<AppExit>| {
             ticks += 1;
@@ -16,11 +17,7 @@ fn main() {
         .run();
 }
 
-
-fn system(
-    mut trees: ResMut<BehaviourTrees>,
-    mut commands: Commands,
-) {
+fn system(mut trees: ResMut<BehaviourTrees>, mut commands: Commands) {
     let id = trees.create((fail, succeed).chain().invert());
 
     for _ in 0..100 {
