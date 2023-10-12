@@ -1,8 +1,6 @@
 //! bevy-behaviour-tree is a crate for defining simple, composable, and extensible behaviour trees for [bevy].
 #![warn(missing_docs)]
-#![feature(return_position_impl_trait_in_trait)]
-#![feature(associated_type_bounds)]
-#![feature(negative_impls)]
+#![feature(return_position_impl_trait_in_trait)] // this may be avoidable.
 
 /// Basic [`Behaviour`][behaviour::Behaviour] trait and impls.
 pub mod behaviour;
@@ -20,7 +18,7 @@ pub mod prelude {
     pub use super::behaviour::{Behaviour, Status};
     pub use super::compositor::Compositor;
     pub use super::decorator::Decorator;
-    pub use super::plugin::{BehaviourId, BehaviourTreePlugin, BehaviourTrees};
+    pub use super::plugin::{BehaviourId, Skip, BehaviourTreePlugin, BehaviourTrees};
 }
 
 /// For debug purposes only. Panics if used in any way.
@@ -36,11 +34,11 @@ impl behaviour::IntoBehaviour<behaviour::SelfMarker> for TodoBehaviour {
 
 impl behaviour::Behaviour for TodoBehaviour {
     fn initialize(&mut self, _: &mut bevy::prelude::World) {
-        todo!()
+        todo!("WIP :)")
     }
 
     fn run(&mut self, _: bevy::prelude::Entity, _: &mut bevy::prelude::World) -> behaviour::Status {
-        todo!()
+        todo!("WIP :)")
     }
 }
 #[cfg(test)]

@@ -38,11 +38,49 @@ pub trait Decorator<Marker> {
 
     /// Repeat while the condition is true, regardless of whether or not the underlying behaviour fails or not.
     ///
-    /// **Succeeds** after the condition becomes true.
+    /// **Succeeds** after the condition becomes false.
     fn repeat_while<C>(self, condition: C) -> impl Behaviour + IntoBehaviour<SelfMarker>
     where
         C: IntoSystem<Entity, bool, ()> + Clone,
         <C as IntoSystem<Entity, bool, ()>>::System: Clone;
+}
+
+
+impl<Marker: 'static, T: IntoBehaviour<Marker>> Decorator<Marker> for T {
+    fn invert(self) -> impl Behaviour + IntoBehaviour<SelfMarker> {
+        Invert(IntoBehaviour::into_behaviour(self))
+    }
+
+    fn retry(self, tries: usize) -> impl Behaviour + IntoBehaviour<SelfMarker> {
+        Retry {
+            func: IntoBehaviour::into_behaviour(self),
+            max_tries: tries,
+            tries: 0,
+        }
+    }
+
+    fn retry_while<CMarker, C>(self, condition: C) -> impl Behaviour + IntoBehaviour<SelfMarker>
+    where
+        C: IntoSystem<Entity, bool, CMarker> + Clone,
+        <C as IntoSystem<Entity, bool, CMarker>>::System: Clone,
+    {
+        RetryWhile {
+            func: IntoBehaviour::into_behaviour(self),
+            condition: IntoSystem::into_system(condition),
+        }
+    }
+
+    fn repeat(self, _times: usize) -> impl Behaviour + IntoBehaviour<SelfMarker> {
+        TodoBehaviour
+    }
+
+    fn repeat_while<C>(self, _condition: C) -> impl Behaviour + IntoBehaviour<SelfMarker>
+    where
+        C: IntoSystem<Entity, bool, ()> + Clone,
+        <C as IntoSystem<Entity, bool, ()>>::System: Clone,
+    {
+        TodoBehaviour
+    }
 }
 
 /// See [`DecoratorInput::invert`].
@@ -139,42 +177,5 @@ impl<T: Behaviour> Behaviour for Retry<T> {
             }
             Status::Running => Status::Running,
         }
-    }
-}
-
-impl<Marker: 'static, T: IntoBehaviour<Marker>> Decorator<Marker> for T {
-    fn invert(self) -> impl Behaviour + IntoBehaviour<SelfMarker> {
-        Invert(IntoBehaviour::into_behaviour(self))
-    }
-
-    fn retry(self, tries: usize) -> impl Behaviour + IntoBehaviour<SelfMarker> {
-        Retry {
-            func: IntoBehaviour::into_behaviour(self),
-            max_tries: tries,
-            tries: 0,
-        }
-    }
-
-    fn retry_while<CMarker, C>(self, condition: C) -> impl Behaviour + IntoBehaviour<SelfMarker>
-    where
-        C: IntoSystem<Entity, bool, CMarker> + Clone,
-        <C as IntoSystem<Entity, bool, CMarker>>::System: Clone,
-    {
-        RetryWhile {
-            func: IntoBehaviour::into_behaviour(self),
-            condition: IntoSystem::into_system(condition),
-        }
-    }
-
-    fn repeat(self, _times: usize) -> impl Behaviour + IntoBehaviour<SelfMarker> {
-        TodoBehaviour
-    }
-
-    fn repeat_while<C>(self, _condition: C) -> impl Behaviour + IntoBehaviour<SelfMarker>
-    where
-        C: IntoSystem<Entity, bool, ()> + Clone,
-        <C as IntoSystem<Entity, bool, ()>>::System: Clone,
-    {
-        TodoBehaviour
     }
 }

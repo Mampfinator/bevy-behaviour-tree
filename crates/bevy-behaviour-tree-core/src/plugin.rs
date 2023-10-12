@@ -30,7 +30,7 @@ impl Plugin for BehaviourTreePlugin {
 /// Resource required for creating trees.
 #[derive(Resource, Default)]
 pub struct BehaviourTrees {
-    // We Option<T> here so we can temporarily move behaviours out of the resource without shifting indices with `mem::take`.
+    // We use Option<T> here so we can temporarily move behaviours out of the resource without shifting indices with `std::mem::take`.
     trees: Vec<Option<Box<dyn Behaviour>>>,
     initialized: HashSet<BehaviourId>,
 }
@@ -42,14 +42,15 @@ impl BehaviourTrees {
     ///
     /// ```
     /// # use bevy::prelude::*;
-    /// # use crate::prelude::*;
+    /// # use bevy_behaviour_tree_core::prelude::*;
     ///
-    /// fn rotate(In(entity), query: Query<&mut Transform>) -> Status {
+    /// fn rotate(In(entity): In<Entity>, mut query: Query<&mut Transform>) -> Status {
     ///     let Ok(mut transform) = query.get_mut(entity) else {
     ///         return Status::Failure
     ///     };
-    ///
-    ///     transform.rotate(Quat::from_axis_rotation(transform.local_z), 90.0_f32.to_radians());
+    ///     
+    ///     let axis = transform.local_z();
+    ///     transform.rotate(Quat::from_axis_angle(axis, 90.0_f32.to_radians()));
     ///
     ///     Status::Running
     /// }
@@ -58,7 +59,7 @@ impl BehaviourTrees {
     ///     mut trees: ResMut<BehaviourTrees>,
     ///     mut commands: Commands,
     /// ) {
-    ///     let behaviour_id = trees.create(rotate.repeat_forever());
+    ///     let behaviour_id = trees.create(rotate.repeat(50));
     ///     commands.spawn((TransformBundle::default(), behaviour_id));
     /// }
     ///
