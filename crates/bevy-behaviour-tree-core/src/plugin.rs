@@ -3,7 +3,8 @@ use bevy::{
     prelude::{
         App, Component, Entity, Mut, Plugin, ReflectComponent, Resource, Update, Without, World,
     },
-    reflect::Reflect, utils::HashSet,
+    reflect::Reflect,
+    utils::HashSet,
 };
 
 use crate::prelude::Behaviour;
@@ -26,30 +27,56 @@ impl Plugin for BehaviourTreePlugin {
     }
 }
 
-// TODO: store whether behaviours have already been initialized and initialize before running accordingly
 /// Resource required for creating trees.
 #[derive(Resource, Default)]
 pub struct BehaviourTrees {
     // We Option<T> here so we can temporarily move behaviours out of the resource without shifting indices with `mem::take`.
     trees: Vec<Option<Box<dyn Behaviour>>>,
-    initialized: HashSet<BehaviourId>
+    initialized: HashSet<BehaviourId>,
 }
 
 impl BehaviourTrees {
-    /// Add a new behaviour tree and return its ID.
-    /// THIS API IS A WORK IN PROGRESS. It's going to be much less verbose once it's stable.
-    pub fn add(&mut self, behaviour: impl Behaviour + 'static) -> BehaviourId {
+    /// Add a new behaviour to the tree.
+    ///
+    /// [`Behaviour`]s are a basically just systems - they have full access to the world, but they always take in an [`Entity`] and return a [`Status`][super::prelude::Status].
+    ///
+    /// ```
+    /// # use bevy::prelude::*;
+    /// # use crate::prelude::*;
+    ///
+    /// fn rotate(In(entity), query: Query<&mut Transform>) -> Status {
+    ///     let Ok(mut transform) = query.get_mut(entity) else {
+    ///         return Status::Failure
+    ///     };
+    ///
+    ///     transform.rotate(Quat::from_axis_rotation(transform.local_z), 90.0_f32.to_radians());
+    ///
+    ///     Status::Running
+    /// }
+    ///
+    /// fn system(
+    ///     mut trees: ResMut<BehaviourTrees>,
+    ///     mut commands: Commands,
+    /// ) {
+    ///     let behaviour_id = trees.create(rotate.repeat_forever());
+    ///     commands.spawn((TransformBundle::default(), behaviour_id));
+    /// }
+    ///
+    /// # bevy::ecs::system::assert_is_system(system);
+    /// ```
+    pub fn create(&mut self, behaviour: impl Behaviour + 'static) -> BehaviourId {
         self.trees.push(Some(Box::new(behaviour)));
         BehaviourId(self.trees.len() - 1)
     }
 
     /// Temporarily moves the behaviour belonging to `id` out of the internal storage.
     /// Used for behaviour initialization logic.
-    /// 
+    ///
     /// `scope` is not ran if the behaviour doesn't exist.
     pub(crate) fn behaviour_scope<F>(&mut self, id: BehaviourId, mut scope: F)
     where
-        F: FnMut(&mut Self, &mut Box<dyn Behaviour>) {
+        F: FnMut(&mut Self, &mut Box<dyn Behaviour>),
+    {
         let Some(behaviour_borrow) = self.trees.get_mut(id.0) else {
             return;
         };
@@ -78,8 +105,9 @@ fn run_ticks(world: &mut World) {
             .query_filtered::<(Entity, &BehaviourId), Without<Skip>>()
             .iter(world)
             .map(|(entity, id)| (entity, *id))
-            .collect::<Vec<_>>(); // collect so we can reborrow world.
-            
+            .collect::<Vec<_>>(); // collect so we can reborrow world for initialization/running.
+
+        // sort to *hopefully* squeeze out some performance.
         query.sort_by(|(_, id1), (_, id2)| id1.cmp(id2));
 
         for (entity, id) in query {

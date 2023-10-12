@@ -2,6 +2,7 @@
 #![warn(missing_docs)]
 #![feature(return_position_impl_trait_in_trait)]
 #![feature(associated_type_bounds)]
+#![feature(negative_impls)]
 
 /// Basic [`Behaviour`][behaviour::Behaviour] trait and impls.
 pub mod behaviour;
@@ -26,6 +27,12 @@ pub mod prelude {
 #[derive(Clone, Copy)]
 #[doc(hidden)]
 pub struct TodoBehaviour;
+
+impl behaviour::IntoBehaviour<behaviour::SelfMarker> for TodoBehaviour {
+    fn into_behaviour(self) -> impl behaviour::Behaviour {
+        self
+    }
+}
 
 impl behaviour::Behaviour for TodoBehaviour {
     fn initialize(&mut self, _: &mut bevy::prelude::World) {
@@ -76,17 +83,16 @@ mod tests {
         #[derive(Component)]
         struct Counter(u32);
 
-        let system = 
-            move |In(entity): In<Entity>, mut counters: Query<&mut Counter>| {
-                let mut counter = counters.get_mut(entity).unwrap();
-                counter.0 += 1;
+        let system = move |In(entity): In<Entity>, mut counters: Query<&mut Counter>| {
+            let mut counter = counters.get_mut(entity).unwrap();
+            counter.0 += 1;
 
-                if counter.0 < 3 {
-                    Status::Failure
-                } else {
-                    Status::Success
-                }
-            };
+            if counter.0 < 3 {
+                Status::Failure
+            } else {
+                Status::Success
+            }
+        };
 
         let mut retry = system.retry(5);
 
@@ -108,8 +114,8 @@ mod tests {
         #[derive(Component)]
         struct Counter(u32);
 
-        let mut retry_system = (
-            move |In(entity): In<Entity>, mut counters: Query<&mut Counter>| {
+        let mut retry_system =
+            (move |In(entity): In<Entity>, mut counters: Query<&mut Counter>| {
                 let mut counter = counters.get_mut(entity).unwrap();
 
                 counter.0 += 1;
@@ -119,12 +125,11 @@ mod tests {
                 } else {
                     Status::Success
                 }
-            }
-        )
-        .retry_while(|In(entity): In<Entity>, counters: Query<&Counter>| {
-            let counter = counters.get(entity).unwrap();
-            counter.0 < 5
-        });
+            })
+            .retry_while(|In(entity): In<Entity>, counters: Query<&Counter>| {
+                let counter = counters.get(entity).unwrap();
+                counter.0 < 5
+            });
 
         retry_system.initialize(&mut world);
 
@@ -150,10 +155,7 @@ mod tests {
     fn test_chain() {
         let mut world = World::default();
 
-        let mut chained = Compositor::chain((
-            fail,
-            panic_if_run,
-        ));
+        let mut chained = Compositor::chain((fail, panic_if_run));
 
         chained.initialize(&mut world);
 

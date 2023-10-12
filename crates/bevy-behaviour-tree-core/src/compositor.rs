@@ -3,7 +3,10 @@ use bevy::{
     utils::all_tuples,
 };
 
-use crate::{prelude::{Behaviour, Status}, behaviour::IntoBehaviour};
+use crate::{
+    behaviour::{IntoBehaviour, SelfMarker},
+    prelude::{Behaviour, Status},
+};
 
 /// Helper trait for [`Behaviour`] tuples.
 trait BehaviourGroup<Marker> {
@@ -28,20 +31,20 @@ all_tuples!(impl_behaviour_group, 2, 15, B, M);
 /// *Composite* nodes take a group of input nodes, run them and transform their ouput.
 pub trait Compositor<Marker> {
     /// Chains the input nodes together. This breaks with a failure as soon as one of the input nodes fails.
-    fn chain(self) -> impl Behaviour;
+    fn chain(self) -> Chain;
     /// Selects between the input branches. Breaks with a success as soon as one input succeeds, or fails if none of them do.
-    fn select(self) -> impl Behaviour;
+    fn select(self) -> Select;
 }
 
 impl<Marker, T: BehaviourGroup<Marker>> Compositor<Marker> for T {
-    fn chain(self) -> impl Behaviour {
+    fn chain(self) -> Chain {
         Chain {
             funcs: BehaviourGroup::group(self),
             index: 0,
         }
     }
 
-    fn select(self) -> impl Behaviour {
+    fn select(self) -> Select {
         Select {
             funcs: BehaviourGroup::group(self),
             index: 0,
@@ -50,9 +53,15 @@ impl<Marker, T: BehaviourGroup<Marker>> Compositor<Marker> for T {
 }
 
 /// See [`CompositeInput::chain`].
-struct Chain {
+pub struct Chain {
     funcs: Vec<Box<dyn Behaviour>>,
     index: usize,
+}
+
+impl IntoBehaviour<SelfMarker> for Chain {
+    fn into_behaviour(self) -> impl Behaviour {
+        self
+    }
 }
 
 impl Behaviour for Chain {
@@ -83,9 +92,15 @@ impl Behaviour for Chain {
 }
 
 /// See [`CompositeInput::select`].
-struct Select {
+pub struct Select {
     funcs: Vec<Box<dyn Behaviour>>,
     index: usize,
+}
+
+impl IntoBehaviour<SelfMarker> for Select {
+    fn into_behaviour(self) -> impl Behaviour {
+        self
+    }
 }
 
 impl Behaviour for Select {
