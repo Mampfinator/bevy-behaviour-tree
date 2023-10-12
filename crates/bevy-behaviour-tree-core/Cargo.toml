@@ -1,5 +1,5 @@
 [package]
-name = "bevy-behaviour-tree"
+name = "bevy-behaviour-tree-core"
 version = "0.1.0"
 edition = "2021"
 

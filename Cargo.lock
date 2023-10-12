@@ -291,6 +291,15 @@ name = "bevy-behaviour-tree"
 version = "0.1.0"
 dependencies = [
  "bevy",
+ "bevy-behaviour-tree-core",
+ "bevy-behaviour-tree-macros",
+]
+
+[[package]]
+name = "bevy-behaviour-tree-core"
+version = "0.1.0"
+dependencies = [
+ "bevy",
  "disjoint_impls",
 ]
 
