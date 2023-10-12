@@ -1,4 +1,4 @@
-use bevy::prelude::{Entity, IntoSystem, System, World};
+use bevy::prelude::{Entity, IntoSystem, System, World, In};
 
 /// The trait at the core of this crate.
 ///
@@ -41,6 +41,12 @@ pub enum Status {
     Running,
 }
 
+impl From<Option<Status>> for Status {
+    fn from(value: Option<Status>) -> Self {
+        value.unwrap_or(Status::Failure)
+    }
+}
+
 struct SystemBehaviour<F>
 where
     F: System<In = Entity, Out = Status>,
@@ -70,13 +76,13 @@ pub trait IntoBehaviour<Marker> {
     fn into_behaviour(self) -> impl Behaviour;
 }
 
-impl<Marker: 'static, T> IntoBehaviour<Marker> for T
+impl<Marker: 'static, S: Into<Status> + 'static, T> IntoBehaviour<(Marker, S)> for T
 where
-    T: IntoSystem<Entity, Status, Marker>,
+    T: IntoSystem<Entity, S, Marker>,
 {
     fn into_behaviour(self) -> impl Behaviour {
         SystemBehaviour {
-            func: IntoSystem::into_system(self),
+            func: self.pipe(|In(into): In<S>| Into::into(into)),
         }
     }
 }

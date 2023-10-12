@@ -27,7 +27,7 @@ fn system(
         commands.spawn(id);
     }
 
-    let other = trees.create((succeed.invert(), fail.invert()).select());
+    let other = trees.create((succeed.invert(), never_do_anything, fail.invert()).select());
 
     for _ in 0..100 {
         commands.spawn(other);
@@ -40,4 +40,8 @@ fn fail(_: In<Entity>) -> Status {
 
 fn succeed(_: In<Entity>) -> Status {
     Status::Success
+}
+
+fn never_do_anything(_: In<Entity>) -> Option<Status> {
+    None
 }

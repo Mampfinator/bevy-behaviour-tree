@@ -46,7 +46,7 @@ impl BehaviourTrees {
     ///
     /// fn rotate(In(entity): In<Entity>, mut query: Query<&mut Transform>) -> Status {
     ///     let Ok(mut transform) = query.get_mut(entity) else {
-    ///         return Status::Failure
+    ///         return Status::Failure;
     ///     };
     ///     
     ///     let axis = transform.local_z();
@@ -65,7 +65,35 @@ impl BehaviourTrees {
     ///
     /// # bevy::ecs::system::assert_is_system(system);
     /// ```
-    pub fn create(&mut self, behaviour: impl Behaviour + 'static) -> BehaviourId {
+    /// 
+    /// `Behaviours` can also return `Option<Status>`, where `None` indicates failure.
+    /// This is useful if the [`Behaviour`] needs to access query items and should fail if the query doesn't contain said items.
+    /// We can rewrite the above `rotate` behaviour like so:
+    /// ```
+    /// # use bevy::prelude::*;
+    /// # use bevy_behaviour_tree_core::prelude::*; 
+    ///
+    /// fn rotate(In(entity): In<Entity>, mut query: Query<&mut Transform>) -> Option<Status> {
+    ///     let mut transform = query.get_mut(entity).ok()?;
+    /// 
+    ///     let axis = transform.local_z();
+    ///     transform.rotate(Quat::from_axis_angle(axis, 90.0_f32.to_radians()));
+    ///
+    ///     Some(Status::Running)
+    /// }
+    /// # fn system(
+    /// #     mut trees: ResMut<BehaviourTrees>,
+    /// #     mut commands: Commands,
+    /// # ) {
+    /// #     let behaviour_id = trees.create(rotate.repeat(50));
+    /// #     commands.spawn((TransformBundle::default(), behaviour_id));
+    /// # }
+    ///
+    /// # bevy::ecs::system::assert_is_system(system);
+    /// 
+    /// ```
+    /// You can return any [`Into<Status>`] from a behaviour, by the way! By default, this is only implemented for `Option<Status>` (and, y'know, `Status` itself).
+    pub fn create<T: Behaviour + 'static>(&mut self, behaviour: T) -> BehaviourId {
         self.trees.push(Some(Box::new(behaviour)));
         BehaviourId(self.trees.len() - 1)
     }
