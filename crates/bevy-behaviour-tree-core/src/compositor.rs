@@ -3,37 +3,37 @@ use bevy::{
     utils::all_tuples,
 };
 
-use crate::prelude::{Behaviour, Status};
+use crate::{prelude::{Behaviour, Status}, behaviour::IntoBehaviour};
 
 /// Helper trait for [`Behaviour`] tuples.
-trait BehaviourGroup {
+trait BehaviourGroup<Marker> {
     fn group(self) -> Vec<Box<dyn Behaviour>>;
 }
 
 macro_rules! impl_behaviour_group {
-    ($($name: ident), *) => {
-        impl<$($name: Behaviour),*> BehaviourGroup for ($($name,)*) {
+    ($(($name:ident,$marker:ident)),*) => {
+        impl<$($marker: 'static, $name: IntoBehaviour<$marker>),*> BehaviourGroup<($($marker,)*)> for ($($name,)*) {
             fn group(self) -> Vec<Box<dyn Behaviour>> {
                 #[allow(non_snake_case)]
                 let ($($name,)*) = self;
 
-                vec![$(Box::new($name)),*]
+                vec![$(Box::new(IntoBehaviour::into_behaviour($name))),*]
             }
         }
     }
 }
 
-all_tuples!(impl_behaviour_group, 2, 15, B);
+all_tuples!(impl_behaviour_group, 2, 15, B, M);
 
 /// *Composite* nodes take a group of input nodes, run them and transform their ouput.
-pub trait Compositor {
+pub trait Compositor<Marker> {
     /// Chains the input nodes together. This breaks with a failure as soon as one of the input nodes fails.
     fn chain(self) -> impl Behaviour;
     /// Selects between the input branches. Breaks with a success as soon as one input succeeds, or fails if none of them do.
     fn select(self) -> impl Behaviour;
 }
 
-impl<T: BehaviourGroup> Compositor for T {
+impl<Marker, T: BehaviourGroup<Marker>> Compositor<Marker> for T {
     fn chain(self) -> impl Behaviour {
         Chain {
             funcs: BehaviourGroup::group(self),

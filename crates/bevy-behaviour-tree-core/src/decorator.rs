@@ -2,13 +2,13 @@ use bevy::prelude::{Entity, IntoSystem, System, World};
 
 use crate::{
     prelude::{Behaviour, Status},
-    TodoBehaviour,
+    TodoBehaviour, behaviour::IntoBehaviour,
 };
 
 /// Types that can be used with the built-in decorator functions.
 /// - [`Behaviour`]
 /// - Nothing else lol
-pub trait Decorator {
+pub trait Decorator<Marker> {
     /// Inverts the output.
     ///
     /// **Succeeds** when the underlying behaviour fails.
@@ -25,10 +25,10 @@ pub trait Decorator {
     ///
     /// **Succeeds** when the underlying behaviour succeeds.
     /// **Fails** when the condition becomes false.
-    fn retry_while<Marker, C>(self, condition: C) -> impl Behaviour
+    fn retry_while<CMarker, C>(self, condition: C) -> impl Behaviour
     where
-        C: IntoSystem<Entity, bool, Marker> + Clone,
-        <C as IntoSystem<Entity, bool, Marker>>::System: Clone;
+        C: IntoSystem<Entity, bool, CMarker> + Clone,
+        <C as IntoSystem<Entity, bool, CMarker>>::System: Clone;
 
     /// Repeat a fixed number of times, regardless of whether or not the underlying behaviour fails or not.
     ///
@@ -121,26 +121,26 @@ impl<T: Behaviour> Behaviour for Retry<T> {
     }
 }
 
-impl<T: Behaviour> Decorator for T {
+impl<Marker: 'static, T: IntoBehaviour<Marker>> Decorator<Marker> for T {
     fn invert(self) -> impl Behaviour {
-        Invert(self)
+        Invert(IntoBehaviour::into_behaviour(self))
     }
 
     fn retry(self, tries: usize) -> impl Behaviour {
         Retry {
-            func: self,
+            func: IntoBehaviour::into_behaviour(self),
             max_tries: tries,
             tries: 0,
         }
     }
 
-    fn retry_while<Marker, C>(self, condition: C) -> impl Behaviour
+    fn retry_while<CMarker, C>(self, condition: C) -> impl Behaviour
     where
-        C: IntoSystem<Entity, bool, Marker> + Clone,
-        <C as IntoSystem<Entity, bool, Marker>>::System: Clone,
+        C: IntoSystem<Entity, bool, CMarker> + Clone,
+        <C as IntoSystem<Entity, bool, CMarker>>::System: Clone,
     {
         RetryWhile {
-            func: self,
+            func: IntoBehaviour::into_behaviour(self),
             condition: IntoSystem::into_system(condition),
         }
     }

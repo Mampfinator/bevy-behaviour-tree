@@ -1,6 +1,7 @@
 //! bevy-behaviour-tree is a crate for defining simple, composable, and extensible behaviour trees for [bevy].
 #![warn(missing_docs)]
 #![feature(return_position_impl_trait_in_trait)]
+#![feature(associated_type_bounds)]
 
 /// Basic [`Behaviour`][behaviour::Behaviour] trait and impls.
 pub mod behaviour;
@@ -75,7 +76,7 @@ mod tests {
         #[derive(Component)]
         struct Counter(u32);
 
-        let system = IntoSystem::into_system(
+        let system = 
             move |In(entity): In<Entity>, mut counters: Query<&mut Counter>| {
                 let mut counter = counters.get_mut(entity).unwrap();
                 counter.0 += 1;
@@ -85,8 +86,7 @@ mod tests {
                 } else {
                     Status::Success
                 }
-            },
-        );
+            };
 
         let mut retry = system.retry(5);
 
@@ -108,7 +108,7 @@ mod tests {
         #[derive(Component)]
         struct Counter(u32);
 
-        let mut retry_system = IntoSystem::into_system(
+        let mut retry_system = (
             move |In(entity): In<Entity>, mut counters: Query<&mut Counter>| {
                 let mut counter = counters.get_mut(entity).unwrap();
 
@@ -119,7 +119,7 @@ mod tests {
                 } else {
                     Status::Success
                 }
-            },
+            }
         )
         .retry_while(|In(entity): In<Entity>, counters: Query<&Counter>| {
             let counter = counters.get(entity).unwrap();
@@ -151,8 +151,8 @@ mod tests {
         let mut world = World::default();
 
         let mut chained = Compositor::chain((
-            IntoSystem::into_system(fail),
-            IntoSystem::into_system(panic_if_run),
+            fail,
+            panic_if_run,
         ));
 
         chained.initialize(&mut world);
@@ -170,13 +170,13 @@ mod tests {
         struct HasRun(bool);
 
         let mut selected = Compositor::select((
-            IntoSystem::into_system(fail),
-            IntoSystem::into_system(fail),
-            IntoSystem::into_system(|In(entity): In<Entity>, mut has_run: Query<&mut HasRun>| {
+            fail,
+            fail,
+            |In(entity): In<Entity>, mut has_run: Query<&mut HasRun>| {
                 has_run.get_mut(entity).unwrap().0 = true;
                 Status::Success
-            }),
-            IntoSystem::into_system(panic_if_run),
+            },
+            panic_if_run,
         ));
 
         selected.initialize(&mut world);

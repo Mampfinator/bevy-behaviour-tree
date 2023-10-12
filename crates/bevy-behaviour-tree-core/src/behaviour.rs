@@ -1,4 +1,4 @@
-use bevy::prelude::{Entity, System, World};
+use bevy::prelude::{Entity, System, World, IntoSystem};
 
 /// The trait at the core of this crate.
 ///
@@ -41,12 +41,37 @@ pub enum Status {
     Running,
 }
 
-impl<F: System<In = Entity, Out = Status> + Clone> Behaviour for F {
-    fn run(&mut self, entity: Entity, world: &mut World) -> Status {
-        System::run(self, entity, world)
-    }
+struct SystemBehaviour<F>
+where 
+    F: System<In = Entity, Out = Status> {
+        func: F,
+}
 
+impl<F> Behaviour for SystemBehaviour<F>
+where 
+    F: System<In = Entity, Out = Status> {
     fn initialize(&mut self, world: &mut World) {
-        System::initialize(self, world)
+        self.func.initialize(world)
+    }
+    
+    fn run(&mut self, entity: Entity, world: &mut World) -> Status {
+        self.func.run(entity, world)
+    }
+}
+
+/// Conversion trait for behaviours.
+pub trait IntoBehaviour<Marker> {
+    /// Conversion function.
+    fn into_behaviour(self) -> impl Behaviour;
+}
+
+impl<Marker: 'static, T> IntoBehaviour<Marker> for T
+where
+    T: IntoSystem<Entity, Status, Marker>,
+{
+    fn into_behaviour(self) -> impl Behaviour {
+        SystemBehaviour {
+            func: IntoSystem::into_system(self)
+        }
     }
 }
