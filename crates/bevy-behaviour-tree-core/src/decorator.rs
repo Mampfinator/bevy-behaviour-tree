@@ -16,6 +16,23 @@ pub trait Decorator<Marker> {
     /// **Fails** when the underlying behaviour succeeds.
     fn invert(self) -> impl Behaviour + IntoBehaviour<SelfMarker>;
 
+    /// Only runs the underlying behaviour if the condition returns true.
+    /// 
+    /// **Succeeds** if the condition is false and short circuits.
+    /// **Succeeds or fails** depending on the underlying behaviour if the condition is true.
+    fn run_if<C>(self, condition: C) -> impl Behaviour + IntoBehaviour<SelfMarker>
+    where
+        C: IntoSystem<Entity, bool, ()> + Clone,
+        <C as IntoSystem<Entity, bool, ()>>::System: Clone;
+
+    /// Like [`run_if`][Decorator::run_if], but with a customisable return when short circuiting.
+    /// 
+    /// Note that `system.run_if(|| true).invert()` is equivalent to `system.run_if_with_return(|| true, Status::Failure)`.
+    fn run_if_with_return<C>(self, condition: C, short_circuit: Status) -> impl Behaviour + IntoBehaviour<SelfMarker>
+    where
+        C: IntoSystem<Entity, bool, ()> + Clone,
+        <C as IntoSystem<Entity, bool, ()>>::System: Clone;
+
     /// Retry the action a fixed number of times.
     ///
     /// **Succeeds** when the underlying behaviour succeeds.
@@ -49,6 +66,24 @@ pub trait Decorator<Marker> {
 impl<Marker: 'static, T: IntoBehaviour<Marker>> Decorator<Marker> for T {
     fn invert(self) -> impl Behaviour + IntoBehaviour<SelfMarker> {
         Invert(IntoBehaviour::into_behaviour(self))
+    }
+
+    fn run_if<C>(self, condition: C) -> impl Behaviour + IntoBehaviour<SelfMarker>
+        where
+            C: IntoSystem<Entity, bool, ()> + Clone,
+            <C as IntoSystem<Entity, bool, ()>>::System: Clone {
+        self.run_if_with_return(condition, Status::Success)
+    }
+
+    fn run_if_with_return<C>(self, condition: C, short_circuit: Status) -> impl Behaviour + IntoBehaviour<SelfMarker>
+        where
+            C: IntoSystem<Entity, bool, ()> + Clone,
+            <C as IntoSystem<Entity, bool, ()>>::System: Clone {
+        RunIf {
+            func: IntoBehaviour::into_behaviour(self),
+            condition: IntoSystem::into_system(condition),
+            short_circuit
+        }
     }
 
     fn retry(self, tries: usize) -> impl Behaviour + IntoBehaviour<SelfMarker> {
@@ -103,6 +138,33 @@ impl<T: Behaviour> Behaviour for Invert<T> {
             Status::Failure => Status::Success,
             Status::Success => Status::Failure,
             Status::Running => Status::Running,
+        }
+    }
+}
+
+struct RunIf<F: Behaviour, C: System<In = Entity, Out = bool> + Clone> {
+    func: F,
+    condition: C,
+    short_circuit: Status,
+}
+
+impl<F: Behaviour, C: System<In = Entity, Out = bool> + Clone> IntoBehaviour<SelfMarker> for RunIf<F, C> {
+    fn into_behaviour(self) -> impl Behaviour {
+        self
+    }
+}
+
+impl<F: Behaviour, C: System<In = Entity, Out = bool> + Clone> Behaviour for RunIf<F, C> {
+    fn initialize(&mut self, world: &mut World) {
+        self.func.initialize(world);
+        self.condition.initialize(world);
+    }
+
+    fn run(&mut self, entity: Entity, world: &mut World) -> Status {
+        if self.condition.run(entity, world) {
+            self.func.run(entity, world)
+        } else {
+            self.short_circuit
         }
     }
 }

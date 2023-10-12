@@ -36,7 +36,10 @@ pub struct BehaviourTrees {
 }
 
 impl BehaviourTrees {
-    /// Add a new behaviour to the tree.
+    /// Create a new behaviour tree. 
+    /// 
+    /// Behaviour trees are evaluated every tick. If you want to only run a tree under certain conditions,
+    /// you can just add a top-level [`run_if`][`crate::decorator::Decorator::run_if`].
     ///
     /// [`Behaviour`]s are a basically just systems - they have full access to the world, but they always take in an [`Entity`] and return a [`Status`][super::prelude::Status].
     ///
