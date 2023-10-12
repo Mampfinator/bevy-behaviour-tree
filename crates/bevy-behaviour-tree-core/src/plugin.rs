@@ -3,7 +3,7 @@ use bevy::{
     prelude::{
         App, Component, Entity, Mut, Plugin, ReflectComponent, Resource, Update, Without, World,
     },
-    reflect::Reflect,
+    reflect::Reflect, utils::HashSet,
 };
 
 use crate::prelude::Behaviour;
@@ -26,18 +26,39 @@ impl Plugin for BehaviourTreePlugin {
     }
 }
 
+// TODO: store whether behaviours have already been initialized and initialize before running accordingly
 /// Resource required for creating trees.
 #[derive(Resource, Default)]
 pub struct BehaviourTrees {
-    trees: Vec<Box<dyn Behaviour>>,
+    // We Option<T> here so we can temporarily move behaviours out of the resource without shifting indices with `mem::take`.
+    trees: Vec<Option<Box<dyn Behaviour>>>,
+    initialized: HashSet<BehaviourId>
 }
 
 impl BehaviourTrees {
     /// Add a new behaviour tree and return its ID.
     /// THIS API IS A WORK IN PROGRESS. It's going to be much less verbose once it's stable.
     pub fn add(&mut self, behaviour: impl Behaviour + 'static) -> BehaviourId {
-        self.trees.push(Box::new(behaviour));
+        self.trees.push(Some(Box::new(behaviour)));
         BehaviourId(self.trees.len() - 1)
+    }
+
+    /// Temporarily moves the behaviour belonging to `id` out of the internal storage.
+    /// Used for behaviour initialization logic.
+    /// 
+    /// `scope` is not ran if the behaviour doesn't exist.
+    pub(crate) fn behaviour_scope<F>(&mut self, id: BehaviourId, mut scope: F)
+    where
+        F: FnMut(&mut Self, &mut Box<dyn Behaviour>) {
+        let Some(behaviour_borrow) = self.trees.get_mut(id.0) else {
+            return;
+        };
+
+        let mut behaviour = std::mem::take(behaviour_borrow).unwrap();
+
+        scope(self, &mut behaviour);
+
+        self.trees[id.0] = Some(behaviour);
     }
 }
 
@@ -53,21 +74,23 @@ pub struct BehaviourId(usize);
 
 fn run_ticks(world: &mut World) {
     world.resource_scope(|world: &mut World, mut trees: Mut<BehaviourTrees>| {
-        let query = world
+        let mut query = world
             .query_filtered::<(Entity, &BehaviourId), Without<Skip>>()
             .iter(world)
             .map(|(entity, id)| (entity, *id))
             .collect::<Vec<_>>(); // collect so we can reborrow world.
+            
+        query.sort_by(|(_, id1), (_, id2)| id1.cmp(id2));
 
         for (entity, id) in query {
-            if let Some(behaviour) = trees.trees.get_mut(id.0) {
+            trees.behaviour_scope(id, |trees, behaviour| {
+                if !trees.initialized.contains(&id) {
+                    behaviour.initialize(world);
+                    trees.initialized.insert(id);
+                }
+
                 behaviour.run(entity, world);
-            } else {
-                bevy::log::warn!(
-                    "Trying to run a behaviour tree that doesn't exist: {}",
-                    id.0
-                );
-            }
+            });
         }
     });
 }
