@@ -3,5 +3,5 @@ A (prototype) crate that implements easy-to-use behaviour trees in bevy, based o
 
 ## TODO
 - [x] basic (manual) functionality traits
-- [ ] automatic conversion traits
+- [x] automatic conversion traits
 - [x] basic plugin functionality
