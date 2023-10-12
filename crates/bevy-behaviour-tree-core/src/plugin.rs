@@ -14,6 +14,16 @@ pub struct BehaviourTreePlugin<Label: ScheduleLabel + Clone = Update> {
     label: Label,
 }
 
+impl<Label: ScheduleLabel + Clone> BehaviourTreePlugin<Label> {
+    /// Executes the tree runner in the given schedule.
+    /// Defaults to [`Update`].
+    pub fn in_schedule(label: Label) -> Self {
+        Self {
+            label
+        }
+    }
+}
+
 impl Default for BehaviourTreePlugin {
     fn default() -> Self {
         Self { label: Update }

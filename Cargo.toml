@@ -17,3 +17,8 @@ bevy-behaviour-tree-macros = { path = "crates/bevy-behaviour-tree-macros" }
 
 [dev-dependencies]
 bevy = "0.11.3"
+rand = "0.8.5"
+
+[[example]]
+name = "moving_points"
+path = "examples/moving_points.rs"

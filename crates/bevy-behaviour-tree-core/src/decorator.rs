@@ -41,7 +41,7 @@ pub trait Decorator<Marker> {
     ///
     /// **Succeeds** when the underlying behaviour succeeds.
     /// **Fails** when the maximum amount of retries has been reached.
-    fn retry(self, tries: usize) -> impl Behaviour + IntoBehaviour<SelfMarker>;
+    fn retry(self, tries: usize) -> impl Behaviour + IntoBehaviour<SelfMarker>; // TODO: fix; store state per-entity
 
     /// Retries while the condition is true.
     ///

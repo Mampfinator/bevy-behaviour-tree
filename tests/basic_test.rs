@@ -18,7 +18,7 @@ fn main() {
 }
 
 fn system(mut trees: ResMut<BehaviourTrees>, mut commands: Commands) {
-    let id = trees.create((fail, succeed).chain().invert());
+    let id = trees.create((fail, succeed).sequence().invert());
 
     for _ in 0..100 {
         commands.spawn(id);

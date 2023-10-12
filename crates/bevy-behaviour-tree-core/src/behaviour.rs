@@ -4,8 +4,7 @@ use bevy::prelude::{Entity, In, IntoSystem, System, World};
 ///
 /// The idea is simple: a `Behaviour` takes in an [`Entity`] and the [`World`] it belongs to, along with its own arbitrary state, and returns a [`Status`], indicating whether it's running, has failed or succeeded.
 ///
-/// The most important implementation for `Behaviour` is a blanket implementation for any [`System<In = Entity, Out = Status>`][bevy::ecs::system::System],
-/// meaning that any user-defined system that takes in an `Entity` and returns a `Status` is automatically a `Behaviour`.
+/// Any user-defined system that takes in an `Entity` and returns a `Status` is automatically a `Behaviour`.
 /// If you've never seen or used system inputs before, have a look at [`In`] and the [piping example](https://github.com/bevyengine/bevy/blob/main/examples/ecs/system_piping.rs).
 ///
 /// There are three basic types of behaviours:
@@ -63,7 +62,10 @@ where
     }
 
     fn run(&mut self, entity: Entity, world: &mut World) -> Status {
-        self.func.run(entity, world)
+        let status = self.func.run(entity, world);
+        self.func.apply_deferred(world);
+
+        status
     }
 }
 

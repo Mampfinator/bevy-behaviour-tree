@@ -1,6 +1,6 @@
 use bevy::{
     prelude::{Entity, World},
-    utils::all_tuples,
+    utils::{all_tuples, HashMap},
 };
 
 use crate::{
@@ -30,41 +30,73 @@ all_tuples!(impl_behaviour_group, 2, 15, B, M);
 
 /// *Composite* nodes take a group of input nodes, run them and transform their ouput.
 pub trait Compositor<Marker> {
-    /// Chains the input nodes together. This breaks with a failure as soon as one of the input nodes fails.
-    fn chain(self) -> Chain;
-    /// Selects between the input branches. Breaks with a success as soon as one input succeeds, or fails if none of them do.
+    /// Runs the input nodes sequentially.
+    /// 
+    /// **Succeeds** if all input nodes succeed.
+    /// **Fails** if any input node fails.
+    fn sequence(self) -> Sequence;
+    /// Selects between the input branches.
+    /// 
+    /// **Succeeds** as soon as any node succeeds. **Fails** if all of them fail.
     fn select(self) -> Select;
 }
 
 impl<Marker, T: BehaviourGroup<Marker>> Compositor<Marker> for T {
-    fn chain(self) -> Chain {
-        Chain {
+    fn sequence(self) -> Sequence {
+        Sequence {
             funcs: BehaviourGroup::group(self),
-            index: 0,
+            indices: HashMap::default(),
         }
     }
 
     fn select(self) -> Select {
         Select {
             funcs: BehaviourGroup::group(self),
-            index: 0,
+            indices: HashMap::default()
         }
     }
 }
 
-/// See [`CompositeInput::chain`].
-pub struct Chain {
+/// See [`Compositor::chain`].
+pub struct Sequence {
     funcs: Vec<Box<dyn Behaviour>>,
-    index: usize,
+    indices: HashMap<Entity, usize>,
 }
 
-impl IntoBehaviour<SelfMarker> for Chain {
+impl Sequence {
+    fn index(&mut self, entity: Entity) -> usize {
+        match self.indices.get(&entity) {
+            Some(index) => *index,
+            None => {
+                self.indices.insert(entity, 0);
+                0
+            }
+        }
+    }
+
+    fn reset(&mut self, entity: Entity) {
+        self.indices.insert(entity, 0);
+    }
+
+    fn increase(&mut self, entity: Entity) {
+        if let Some(index) = self.indices.get_mut(&entity) {
+            *index += 1;
+        }
+    }
+
+    pub(crate) fn behaviour_mut(&mut self, entity: Entity) -> Option<&mut Box<dyn Behaviour>> {
+        let index = self.index(entity);
+        self.funcs.get_mut(index)
+    }
+}
+
+impl IntoBehaviour<SelfMarker> for Sequence {
     fn into_behaviour(self) -> impl Behaviour {
         self
     }
 }
 
-impl Behaviour for Chain {
+impl Behaviour for Sequence {
     fn initialize(&mut self, world: &mut World) {
         for func in &mut self.funcs {
             func.initialize(world);
@@ -72,20 +104,20 @@ impl Behaviour for Chain {
     }
 
     fn run(&mut self, entity: Entity, world: &mut World) -> Status {
-        if let Some(system) = self.funcs.get_mut(self.index) {
-            match system.run(entity, world) {
+        if let Some(behaviour) = self.behaviour_mut(entity) {
+            match behaviour.run(entity, world) {
                 Status::Running => Status::Running,
                 Status::Failure => {
-                    // reset state
-                    self.index = 0;
+                    self.reset(entity);
                     Status::Failure
-                }
+                },
                 Status::Success => {
-                    self.index += 1;
+                    self.increase(entity);
                     Status::Running
                 }
             }
         } else {
+            self.reset(entity);
             Status::Success
         }
     }
@@ -94,7 +126,36 @@ impl Behaviour for Chain {
 /// See [`CompositeInput::select`].
 pub struct Select {
     funcs: Vec<Box<dyn Behaviour>>,
-    index: usize,
+    indices: HashMap<Entity, usize>,
+}
+
+impl Select {
+    pub(crate) fn behaviour_mut(&mut self, entity: Entity) -> Option<&mut Box<dyn Behaviour>> {
+        let index = self.index(entity);
+        self.funcs.get_mut(index)
+    }
+
+    fn index(&mut self, entity: Entity) -> usize {
+        match self.indices.get(&entity) {
+            Some(index) => *index,
+            None => {
+                self.indices.insert(entity, 0);
+                0
+            }
+        }
+    }
+
+    fn reset(&mut self, entity: Entity) {
+        if let Some(index) = self.indices.get_mut(&entity) {
+            *index = 0;
+        }
+    }
+
+    pub(crate) fn increase(&mut self, entity: Entity) {
+        if let Some(index) = self.indices.get_mut(&entity) {
+            *index += 1;
+        }
+    }
 }
 
 impl IntoBehaviour<SelfMarker> for Select {
@@ -111,22 +172,20 @@ impl Behaviour for Select {
     }
 
     fn run(&mut self, entity: Entity, world: &mut World) -> Status {
-        if let Some(system) = self.funcs.get_mut(self.index) {
-            match system.run(entity, world) {
+        if let Some(behaviour) = self.behaviour_mut(entity) {
+            match behaviour.run(entity, world) {
                 Status::Running => Status::Running,
                 Status::Failure => {
-                    // advance to the next branch
-                    self.index += 1;
+                    self.increase(entity);
                     Status::Running
-                }
+                },
                 Status::Success => {
-                    // reset state
-                    self.index = 0;
+                    self.reset(entity);
                     Status::Success
                 }
             }
         } else {
-            self.index = 0;
+            self.reset(entity);
             // we tried everything; no branch was successful
             Status::Failure
         }

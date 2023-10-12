@@ -1,6 +1,7 @@
 //! bevy-behaviour-tree is a crate for defining simple, composable, and extensible behaviour trees for [bevy].
 #![warn(missing_docs)]
 #![feature(return_position_impl_trait_in_trait)] // this may be avoidable.
+#![feature(associated_type_bounds)]
 
 /// Basic [`Behaviour`][behaviour::Behaviour] trait and impls.
 pub mod behaviour;
@@ -18,7 +19,7 @@ pub mod prelude {
     pub use super::behaviour::{Behaviour, Status};
     pub use super::compositor::Compositor;
     pub use super::decorator::Decorator;
-    pub use super::plugin::{BehaviourId, BehaviourTreePlugin, BehaviourTrees, Skip};
+    pub use super::plugin::{BehaviourId, Skip, BehaviourTreePlugin, BehaviourTrees};
 }
 
 /// For debug purposes only. Panics if used in any way.
@@ -43,7 +44,7 @@ impl behaviour::Behaviour for TodoBehaviour {
 }
 #[cfg(test)]
 mod tests {
-    use bevy::prelude::{Component, Entity, In, IntoSystem, Query, World};
+    use bevy::prelude::{Component, Entity, In, Query, World};
 
     use crate::prelude::*;
 
@@ -63,7 +64,7 @@ mod tests {
     fn test_invert() {
         let mut world = World::default();
 
-        let mut system = IntoSystem::into_system(succeed).invert();
+        let mut system = succeed.invert();
 
         let entity = world.spawn_empty().id();
 
@@ -153,7 +154,7 @@ mod tests {
     fn test_chain() {
         let mut world = World::default();
 
-        let mut chained = Compositor::chain((fail, panic_if_run));
+        let mut chained = Compositor::sequence((fail, panic_if_run));
 
         chained.initialize(&mut world);
 
