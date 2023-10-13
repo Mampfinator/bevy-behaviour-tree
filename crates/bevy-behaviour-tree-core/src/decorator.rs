@@ -1,10 +1,29 @@
-use bevy::prelude::{Entity, IntoSystem, System, World};
+use bevy::{
+    prelude::{Entity, IntoSystem, System, World},
+    utils::HashMap,
+};
 
 use crate::{
     behaviour::{IntoBehaviour, SelfMarker},
     prelude::{Behaviour, Status},
     TodoBehaviour,
 };
+
+// TODO: we can simplify Decorators massively by having a `decorate` function that accepts an IntoBehaviour, then reimplementing everything on top of that.
+// could look something like
+// 
+// struct DecoratorBehaviour<D: Decoratable, B: Behaviour> {
+//     source: D,
+//     decorator: B,
+// }
+// trait Decoratable: IntoBehaviour {
+//      fn decorate<M, T: IntoBehaviour<M>>(self, decorator: T) -> impl Behaviour + IntoBehaviour<SelfMarker> {
+//          DecoratorBehaviour {
+//              source: IntoBehaviour::into_behaviour(self),
+//              decorator: IntoBehaviour::into_behaviour(decorator),
+//          }
+//      }
+// }
 
 /// Types that can be used with the built-in decorator functions.
 /// - [`Behaviour`]
@@ -41,7 +60,7 @@ pub trait Decorator<Marker> {
     ///
     /// **Succeeds** when the underlying behaviour succeeds.
     /// **Fails** when the maximum amount of retries has been reached.
-    fn retry(self, tries: usize) -> impl Behaviour + IntoBehaviour<SelfMarker>; // TODO: fix; store state per-entity
+    fn retry(self, tries: usize) -> impl Behaviour + IntoBehaviour<SelfMarker>;
 
     /// Retries while the condition is true.
     ///
@@ -99,7 +118,7 @@ impl<Marker: 'static, T: IntoBehaviour<Marker>> Decorator<Marker> for T {
         Retry {
             func: IntoBehaviour::into_behaviour(self),
             max_tries: tries,
-            tries: 0,
+            tries: HashMap::default(),
         }
     }
 
@@ -142,6 +161,7 @@ impl<T: Behaviour> Behaviour for Invert<T> {
         self.0.initialize(world);
     }
 
+    #[inline]
     fn run(&mut self, entity: Entity, world: &mut World) -> Status {
         match self.0.run(entity, world) {
             Status::Failure => Status::Success,
@@ -171,6 +191,7 @@ impl<F: Behaviour, C: System<In = Entity, Out = bool> + Clone> Behaviour for Run
         self.condition.initialize(world);
     }
 
+    #[inline]
     fn run(&mut self, entity: Entity, world: &mut World) -> Status {
         if self.condition.run(entity, world) {
             self.func.run(entity, world)
@@ -201,6 +222,7 @@ impl<F: Behaviour, C: System<In = Entity, Out = bool> + Clone> Behaviour for Ret
         self.func.initialize(world);
     }
 
+    #[inline]
     fn run(&mut self, entity: Entity, world: &mut World) -> Status {
         if self.condition.run(entity, world) {
             match self.func.run(entity, world) {
@@ -217,8 +239,33 @@ impl<F: Behaviour, C: System<In = Entity, Out = bool> + Clone> Behaviour for Ret
 #[derive(Clone)]
 struct Retry<T: Behaviour> {
     max_tries: usize,
-    tries: usize,
+    tries: HashMap<Entity, usize>,
     func: T,
+}
+
+impl<T: Behaviour> Retry<T> {
+    #[inline]
+    fn reset(&mut self, entity: Entity) {
+        self.tries.insert(entity, 0);
+    }
+
+    #[inline]
+    fn increase(&mut self, entity: Entity) {
+        if let Some(attempt) = self.tries.get_mut(&entity) {
+            *attempt += 1;
+        }
+    }
+
+    #[inline]
+    fn tries(&mut self, entity: Entity) -> usize {
+        match self.tries.get(&entity) {
+            Some(attempts) => *attempts,
+            None => {
+                self.tries.insert(entity, 0);
+                0
+            }
+        }
+    }
 }
 
 impl<T: Behaviour> IntoBehaviour<SelfMarker> for Retry<T> {
@@ -230,22 +277,21 @@ impl<T: Behaviour> IntoBehaviour<SelfMarker> for Retry<T> {
 impl<T: Behaviour> Behaviour for Retry<T> {
     fn initialize(&mut self, world: &mut World) {
         self.func.initialize(world);
-        self.tries = 0;
     }
 
     fn run(&mut self, entity: Entity, world: &mut World) -> Status {
         match self.func.run(entity, world) {
             Status::Failure => {
-                self.tries += 1;
-                if self.tries < self.max_tries {
+                self.increase(entity);
+                if self.tries(entity) < self.max_tries {
                     Status::Running
                 } else {
-                    self.tries = 0; // reset state to get ready for the next call
+                    self.reset(entity); // reset state to get ready for the next call
                     Status::Failure
                 }
             }
             Status::Success => {
-                self.tries = 0; // reset state
+                self.reset(entity); // reset state
                 Status::Success
             }
             Status::Running => Status::Running,

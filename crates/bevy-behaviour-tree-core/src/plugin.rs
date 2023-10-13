@@ -18,9 +18,7 @@ impl<Label: ScheduleLabel + Clone> BehaviourTreePlugin<Label> {
     /// Executes the tree runner in the given schedule.
     /// Defaults to [`Update`].
     pub fn in_schedule(label: Label) -> Self {
-        Self {
-            label
-        }
+        Self { label }
     }
 }
 
@@ -105,7 +103,7 @@ impl BehaviourTrees {
     /// # bevy::ecs::system::assert_is_system(system);
     ///
     /// ```
-    /// You can return any [`Into<Status>`] from a behaviour, by the way! By default, this is only implemented for `Option<Status>` (and, y'know, `Status` itself).
+    /// You can return any [`Into<Status>`] from a behaviour, by the way! By default, this is only implemented for `Option<Status>` and `bool` (and, y'know, `Status` itself).
     pub fn create<T: Behaviour + 'static>(&mut self, behaviour: T) -> BehaviourId {
         self.trees.push(Some(Box::new(behaviour)));
         BehaviourId(self.trees.len() - 1)

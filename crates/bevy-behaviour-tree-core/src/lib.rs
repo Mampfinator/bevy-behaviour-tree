@@ -1,5 +1,6 @@
 //! bevy-behaviour-tree is a crate for defining simple, composable, and extensible behaviour trees for [bevy].
 #![warn(missing_docs)]
+#![allow(clippy::type_complexity)]
 #![feature(return_position_impl_trait_in_trait)] // this may be avoidable.
 #![feature(associated_type_bounds)]
 
@@ -19,7 +20,7 @@ pub mod prelude {
     pub use super::behaviour::{Behaviour, Status};
     pub use super::compositor::Compositor;
     pub use super::decorator::Decorator;
-    pub use super::plugin::{BehaviourId, Skip, BehaviourTreePlugin, BehaviourTrees};
+    pub use super::plugin::{BehaviourId, BehaviourTreePlugin, BehaviourTrees, Skip};
 }
 
 /// For debug purposes only. Panics if used in any way.

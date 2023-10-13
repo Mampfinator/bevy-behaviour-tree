@@ -46,6 +46,15 @@ impl From<Option<Status>> for Status {
     }
 }
 
+impl From<bool> for Status {
+    fn from(value: bool) -> Self {
+        match value {
+            true => Status::Success,
+            false => Status::Failure,
+        }
+    }
+}
+
 struct SystemBehaviour<F>
 where
     F: System<In = Entity, Out = Status>,
@@ -57,10 +66,12 @@ impl<F> Behaviour for SystemBehaviour<F>
 where
     F: System<In = Entity, Out = Status>,
 {
+    #[inline]
     fn initialize(&mut self, world: &mut World) {
         self.func.initialize(world)
     }
 
+    #[inline]
     fn run(&mut self, entity: Entity, world: &mut World) -> Status {
         let status = self.func.run(entity, world);
         self.func.apply_deferred(world);
@@ -78,13 +89,19 @@ pub trait IntoBehaviour<Marker> {
     fn into_behaviour(self) -> impl Behaviour;
 }
 
+#[inline]
+fn into_status<S: Into<Status>>(In(into): In<S>) -> Status {
+    Into::into(into)
+}
+
 impl<Marker: 'static, S: Into<Status> + 'static, T> IntoBehaviour<(Marker, S)> for T
 where
     T: IntoSystem<Entity, S, Marker>,
 {
+    #[inline]
     fn into_behaviour(self) -> impl Behaviour {
         SystemBehaviour {
-            func: self.pipe(|In(into): In<S>| Into::into(into)),
+            func: self.pipe(into_status),
         }
     }
 }

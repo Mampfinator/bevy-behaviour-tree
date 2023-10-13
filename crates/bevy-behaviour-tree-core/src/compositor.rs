@@ -31,12 +31,12 @@ all_tuples!(impl_behaviour_group, 2, 15, B, M);
 /// *Composite* nodes take a group of input nodes, run them and transform their ouput.
 pub trait Compositor<Marker> {
     /// Runs the input nodes sequentially.
-    /// 
+    ///
     /// **Succeeds** if all input nodes succeed.
     /// **Fails** if any input node fails.
     fn sequence(self) -> Sequence;
     /// Selects between the input branches.
-    /// 
+    ///
     /// **Succeeds** as soon as any node succeeds. **Fails** if all of them fail.
     fn select(self) -> Select;
 }
@@ -52,7 +52,7 @@ impl<Marker, T: BehaviourGroup<Marker>> Compositor<Marker> for T {
     fn select(self) -> Select {
         Select {
             funcs: BehaviourGroup::group(self),
-            indices: HashMap::default()
+            indices: HashMap::default(),
         }
     }
 }
@@ -64,6 +64,7 @@ pub struct Sequence {
 }
 
 impl Sequence {
+    #[inline]
     fn index(&mut self, entity: Entity) -> usize {
         match self.indices.get(&entity) {
             Some(index) => *index,
@@ -74,16 +75,21 @@ impl Sequence {
         }
     }
 
+    #[inline]
     fn reset(&mut self, entity: Entity) {
-        self.indices.insert(entity, 0);
+        if let Some(index) = self.indices.get_mut(&entity) {
+            *index = 0;
+        }
     }
 
+    #[inline]
     fn increase(&mut self, entity: Entity) {
         if let Some(index) = self.indices.get_mut(&entity) {
             *index += 1;
         }
     }
 
+    #[inline]
     pub(crate) fn behaviour_mut(&mut self, entity: Entity) -> Option<&mut Box<dyn Behaviour>> {
         let index = self.index(entity);
         self.funcs.get_mut(index)
@@ -103,6 +109,7 @@ impl Behaviour for Sequence {
         }
     }
 
+    #[inline]
     fn run(&mut self, entity: Entity, world: &mut World) -> Status {
         if let Some(behaviour) = self.behaviour_mut(entity) {
             match behaviour.run(entity, world) {
@@ -110,7 +117,7 @@ impl Behaviour for Sequence {
                 Status::Failure => {
                     self.reset(entity);
                     Status::Failure
-                },
+                }
                 Status::Success => {
                     self.increase(entity);
                     Status::Running
@@ -130,11 +137,13 @@ pub struct Select {
 }
 
 impl Select {
+    #[inline]
     pub(crate) fn behaviour_mut(&mut self, entity: Entity) -> Option<&mut Box<dyn Behaviour>> {
         let index = self.index(entity);
         self.funcs.get_mut(index)
     }
 
+    #[inline]
     fn index(&mut self, entity: Entity) -> usize {
         match self.indices.get(&entity) {
             Some(index) => *index,
@@ -145,12 +154,14 @@ impl Select {
         }
     }
 
+    #[inline]
     fn reset(&mut self, entity: Entity) {
         if let Some(index) = self.indices.get_mut(&entity) {
             *index = 0;
         }
     }
 
+    #[inline]
     pub(crate) fn increase(&mut self, entity: Entity) {
         if let Some(index) = self.indices.get_mut(&entity) {
             *index += 1;
@@ -159,6 +170,7 @@ impl Select {
 }
 
 impl IntoBehaviour<SelfMarker> for Select {
+    #[inline]
     fn into_behaviour(self) -> impl Behaviour {
         self
     }
@@ -171,6 +183,7 @@ impl Behaviour for Select {
         }
     }
 
+    #[inline]
     fn run(&mut self, entity: Entity, world: &mut World) -> Status {
         if let Some(behaviour) = self.behaviour_mut(entity) {
             match behaviour.run(entity, world) {
@@ -178,7 +191,7 @@ impl Behaviour for Select {
                 Status::Failure => {
                     self.increase(entity);
                     Status::Running
-                },
+                }
                 Status::Success => {
                     self.reset(entity);
                     Status::Success
